@@ -1,8 +1,8 @@
 var mongoose = require("mongoose");
-const { ObjectId } = require("mongodb");
 
+const mongodb = 'mongodb+srv://user2020:Lucile101@cluster0.8x0m4.mongodb.net/nodedb?retryWrites=true&w=majority';
 mongoose
-  .connect(process.env.MONGO_URI, {
+  .connect(process.env.MONGO_URI || mongodb, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     useFindAndModify: false,
@@ -15,118 +15,95 @@ mongoose
     console.log("Mongoose Error: ", err);
   });
 
-  const MongooseSchema = mongoose.Schema;
+const MongooseSchema = mongoose.Schema;
 
-  const userSchema = new MongooseSchema({
-    username: { type: String , unique: true },
+const userSchema = new MongooseSchema({
+  username: { type: String, unique: true },
+})
+
+const exerciseSchema = new MongooseSchema({
+  idx: { type: mongoose.Schema.Types.ObjectId },
+  description: { type: String },
+  duration: { type: String },
+  date: { type: Date, default: Date.now }
+})
+
+const User = mongoose.model('Users', userSchema, 'Users');
+const Exercise = mongoose.model('Exercise', exerciseSchema, 'Exercise');
+
+const newUser = function (username, done) {
+  if (!username) return done({ error: 'Invalid param name' });
+  User.create({ username: username }, function (err, data) {
+    if (err) { return done(err) }
+    done(null, data);
   })
+}
 
-  const exerciseSchema = new MongooseSchema({
-    _id: { type: ObjectId },
-    description: { type: String, unique: true },
-    duration: { type: String },
-    date: { type: Date }
+const getUser = function (user_name, done) {
+  URL.findOne({ username: user_name }, function (err, record) {
+    if (err) return done(err);
+    return done(null, record);
   })
+}
 
-  const User = mongoose.model('Users', userSchema, 'Users');
-  const Exercise = mongoose.model('Exercise', exerciseSchema, 'Exercise');
-  
-  const getNumberOfUsers = function(done){
-    User.find(function(err, data){
-      if(err) return done(err);
-      return done(null, data);
-    });
-  }
-
-  const getUserExercise = function(user_name, done){
-    User.findOne({ name: user_name }, function(err, data){
-      if(err) return done(err);
-      else{
-        Exercise.findMany({ _id: data._id}, function(err, records){
-          if(err) return done(err);
-          return done(err, records);
-        })
-      }
-    });
-  }
-
-  const newUser = function(user_name, done){
-    User.create({ username: user_name }, function(err, data){
-      if(err){
-        err.message = { error: 'User Already Exists'};
-        return done(err);
-      }
-      done(null, data);
-    })
-  }
-
-  const getUser = function(user_name, done){
-    URL.find({ username: user_name }, function(err, record){
-      if(err) return done(err);
-      return done(null, record);
-    })
-  }
-
-  const getAllUsers = function(done){
-    User.find()
-    .sort({ username: 1})
-    .select({ _id: 1, username: 1}) 
-    .exec(function(err, data){
-      if(err) return done(err);
+const getAllUsers = function (done) {
+  User.find()
+    .sort({ username: 1 })
+    .select({ _id: 1, username: 1 })
+    .exec(function (err, data) {
+      if (err) return done(err);
       return done(null, data);
     })
-  }
+}
 
-  const addExercise = function(userId, descr, duration, date, done){
-    if(!userId || userId.length < 12) return done({ error: 'Invalid ID'});
-    User.findById({ _id: userId }, function(err, data){
-      //console.log(err, data);
-      if(err){
-        err.message = { error: 'user not Found'};
-        return done(err);
-      } 
-      else {
-        let d = date !== null ? date : new Date();
-        let formatter = require('./functions.js').formatter;
-        let dur = formatter(duration);
-        let record = { _id: data._id, description: descr, duration: dur, date: d }
-        Exercise.create(record, function(err, result){
-          if(err){
-            err.message = { error: 'Record already exists'}
-            return done(err);
-          }
-          return done(null, result);
-        })  
-      }
-    })
-  }
+const addExercise = async function (userId, descr, duration, date, done) {
+  if (!userId || userId.length < 12) return done({ error: 'Invalid ID' });
+  await User.findOne({ _id: userId })
+    .then((data) => {
+      let d = date !== null ? new Date(date) : new Date();
+      let formatter = require('./functions.js').formatter;
+      let dur = formatter(duration);
+      let record = { idx: data._id, description: descr, duration: dur, date: d }
+      Exercise.create(record, function (err, result) {
 
-  const getUserLogs = function(userId, done){
-    console.log(userId)
-    User.findById({ _id: userId }, function(err, data){
-      if(err){
-        err.message = { error: 'user not Found'};
-        return done(err);
-      } 
-      else {
-        let logs = getLogs(data._id)
-        if(logs === 'error'){
-          err.message = { error: 'No Logs Found'}
+        if (err) {
+          err.message = { error: 'Record already exists' }
           return done(err);
-        } 
-        // user found go ahead and find any logs
-        let result = { user: data, logs: logs}
-        done(null, result)
-    }
-  })
+        }
+        return done(null, result);
+      })
+    })
+    .catch((err) => {
+      err.message = { error: 'user not Found' };
+      return done(err);
+    })
 }
-var getLogs = function(userId){
-  Exercise.findById({ _id : userId}, function(err, data){
-    if(err) return 'error';
-    else return data;
-  })
+
+const getUserLogs = function getUserLogs(userId, from, to, limit, done) {
+  if (!userId) return done({ error: 'Invalid UserId' });
+  if (!done) return done({ error: 'Missing Callback' });
+  User.findOne({ _id: userId })
+    .then((data) => {
+ 
+      let params = { idx: data._id, date: {} }
+     
+      if (from) params.date.$gte = new Date(from);
+      if (to) params.date.$lte = new Date(to);
+      
+      Exercise.find(params)
+        .limit(limit)
+        .select({ _id: 0, __v: 0 })
+        .exec(function (err, logs) {
+          if (err) return done({ error: err });
+          else return done(null, { user: { _id: data._id, username: data.username }, logs: logs });
+        })
+    })
+    .catch((err) => done(err));
 }
-  exports.newUser = newUser;
-  exports.addExercise = addExercise;
-  exports.getAllUsers = getAllUsers;
-  exports.getLogs = getUserLogs;
+
+exports.exercise = Exercise;
+exports.user = User;
+exports.newUser = newUser;
+exports.addExercise = addExercise;
+exports.getAllUsers = getAllUsers;
+exports.getUserLogs = getUserLogs;

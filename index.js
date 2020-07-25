@@ -8,9 +8,13 @@ const fs = require('fs');
 const app = express();
 const router = express.Router();
 
+app.use(bodyParser.urlencoded({ extended: "false" }));
+app.use(bodyParser.json());
+
 // enable CORS (https://en.wikipedia.org/wiki/Cross-origin_resource_sharing)
 // so that your API is remotely testable by FCC 
 const cors = require('cors');
+const { newUser } = require('./mongoose-module');
 const cors_options = {
   optionSuccessStatus: 200, // some legacy browsers choke on 204
   origin: [
@@ -20,9 +24,7 @@ const cors_options = {
   ]
 }
 
-app.use(bodyParser.urlencoded({ extended: "false" }));
-app.use(bodyParser.json());
-app.use(cors(cors_options));  
+app.use(cors(cors_options));
 
 // http://expressjs.com/en/starter/static-files.html
 app.use(express.static('public'));
@@ -51,12 +53,16 @@ app.use("/api", cors(), router);
 // Add a new user
 var new_user = require('./mongoose-module').newUser;
 
-router.post('/exercise/:new-user', function(req, res, next){
+router.post('/exercise/new-user', function (req, res, next) {
+  console.log('newUser');
   next();
-}, function(req, res, next){
-  new_user(req.body.username, function(err, data){
-    if(err) return next(err);
-    res.json({ id: data .id, username: data.username });
+}, function (req, res, next) {
+  new_user(req.body.username, function (err, data) {
+    if (err) { 
+      if(err.code = 11000) err.message = { error: 'User Already Exists' };
+      return next(err) 
+    };
+    res.json({ id: data.id, username: data.username });
   })
 })
 
@@ -64,56 +70,59 @@ router.post('/exercise/:new-user', function(req, res, next){
 var getAllUsers = require('./mongoose-module').getAllUsers;
 
 // Get all users
-router.get('/exercise/:users', function(req, res, next){
+router.get('/exercise/users', function (req, res, next) {
+  console.log('getAllUsers');
   next();
-}, function(req, res, next){
-  getAllUsers(function(err, data){
-    if(err) return next(err);
-    res.json({ data: data})
+}, function (req, res, next) {
+  getAllUsers(function (err, data) {
+    if (err) { return next(err) }
+    res.json(data)
   })
 })
 
 // Get all users
+var getUserLogs = require('./mongoose-module').getUserLogs;
+
+router.get('/exercise/log', function (req, res, next) {
+  next();
+}, function (req, res, next) {
+  let id = req.query.userId;
+  let from = req.query.from;
+  let to = req.query.to;
+  let limit = req.query.limit ? parseInt(req.query.limit) : 0;
+
+  getUserLogs(id, from, to, limit, function (err, data) {
+    if (err) { return next(err) }
+    res.json(data)
+  })
+})
+
+var exercise = require('./mongoose-module').exercise;
 var addExercise = require('./mongoose-module').addExercise;
 
-router.post('/exercise/:add', function(req, res, next){
+router.post('/exercise/:add', function (req, res, next) {
   next();
-}, function(req, res, next){
+}, function (req, res, next) {
   let id = req.body.userId;
   let desc = req.body.description;
   let dur = req.body.duration;
   let d = req.body.date;
-  addExercise(id, desc, dur, d, function(err, data){
-    if(err) return next(err)
-    res.json({ data: data })
+  addExercise(id, desc, dur, d, function (err, data) {
+    if (err) { return next(err) }
+    res.json(data)
+    res.end();
   })
 })
 
-// Get all users
-var getLogs = require('./mongoose-module').getLogs;
-
-router.get('/exercise/:log', function(req, res, next){
-  next();
-}, function(req, res, next){
-  console.log('hefre')
-      getLogs(id, function(err, data){
-        if(err) { 
-          return next(err);
-        }
-        res.json(data)
-      })
-    }
-)
-
 // Not found middleware
 app.use((req, res, next) => {
-  return next({status: 404, message: 'not found'})
+  console.log('unmatched');
+  return next({ status: 404, message: 'not found' })
 })
 
 // Error Handling middleware
 app.use((err, req, res, next) => {
-  let errCode, errMessage
-console.log('error')
+  let errCode, errMessage;
   if (err.errors) {
     // mongoose validation error
     errCode = 400 // bad request
@@ -129,6 +138,52 @@ console.log('error')
     .send(errMessage)
 })
 
+let ids = ['5f1c4bbf494b2240941aa8d7', '5f1c4bbf494b2240941aa8d8'];
+
+let exercises = [
+  { description: 'First Exercise', duration: 230, date: '2020/07/23' },
+  { description: 'Second Exercise', duration: 120, date: '2020/07/24' },
+  { description: 'Third Exercise', duration: 180, date: '2020/07/25' }
+]
+function getId(err, data) {
+  if (err) console.log('getId: ', err);
+
+  ids.push(data.id);
+}
+function print(err, data) {
+  if (err) console.log('print: ', err);
+  console.log('getAllusers: ', data);
+}
+run();
+// run tests
+function run() {
+
+  // Create some test data
+  /*new_user('David Booth', function(err, data){
+    //getId(err, data);
+  })
+  new_user('Robert Williams', function(err, data){
+    //getId(err, data);
+  })*/
+
+  // Get all users
+  /*getAllUsers(function(err, data){
+    print(err, data);
+  })*/
+
+  // Add exercises for each user
+  /*for (let i = 0; i < 2; i++) {
+    exercises.forEach((data) => {
+      addExercise(ids[i], data.description, data.duration, data.date, function(err, data){
+        console.log(data);
+      })
+    })
+  }*/
+  // get the user logs
+  /*getUserLogs(ids[0], '2020/07/23', '2020/07/24', 0, function(err, data){
+    console.log('getUserLogs: ', data);
+  })*/
+}
 // listen for requests :)
 var server = app.listen(process.env.PORT || 3001, function () {
   console.log('Express Server Listening on localhost:port ' + server.address().port)
